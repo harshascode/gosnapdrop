@@ -1,15 +1,24 @@
-FROM node:lts-alpine
+FROM golang:1.21-alpine AS builder
 
-WORKDIR /home/node/app
+WORKDIR /app
 
-COPY package*.json ./
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
 
-RUN npm ci
-
+# Copy source code
 COPY . .
 
-EXPOSE 3000
+# Build the application
+RUN CGO_ENABLED=0 GOOS=linux go build -o gosnapdrop
 
-ENV PORT=3000
+# Create final minimal image
+FROM alpine:latest
 
-CMD ["node", "index.js"]
+WORKDIR /app
+
+COPY --from=builder /app/gosnapdrop .
+
+EXPOSE 8080
+
+CMD ["./gosnapdrop"]
