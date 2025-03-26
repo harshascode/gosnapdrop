@@ -2,6 +2,8 @@
 .git
 .gitignore
 
+gosnapdrop
+
 # Build artifacts
 bin/
 dist/
@@ -43,3 +45,10 @@ Thumbs.db
 # Docker specific
 Dockerfile
 .dockerignore
+
+# Additional Go build artifacts
+debug/
+debug.test
+*.pprof
+*.cpu
+*.mem
