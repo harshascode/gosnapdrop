@@ -61,6 +61,9 @@ func main() {
 	store := memory.NewStore()
 	rateLimiter := limiter.New(store, rate)
 
+	// Set Gin to release mode
+	gin.SetMode(gin.ReleaseMode)
+
 	// Server setup
 	router := gin.Default()
 	router.Use(gin.Recovery())

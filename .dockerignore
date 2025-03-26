@@ -1,0 +1,45 @@
+# Version control
+.git
+.gitignore
+
+# Build artifacts
+bin/
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go specific
+*.test
+*.out
+go.work
+
+# IDE specific
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Dependencies
+vendor/
+
+# Environment and secrets
+.env
+*.env
+*.env.*
+secrets/
+
+# Logs and databases
+*.log
+*.sql
+*.sqlite
+
+# OS specific
+.DS_Store
+Thumbs.db
+
+# Docker specific
+Dockerfile
+.dockerignore
