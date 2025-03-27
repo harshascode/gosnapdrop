@@ -41,6 +41,8 @@ type SnapdropServer struct {
 	rooms    map[string]map[string]*Peer
 	upgrader websocket.Upgrader
 	mutex    sync.RWMutex
+	done     chan struct{}    // For cleanup signaling
+	wg       sync.WaitGroup   // For graceful shutdown
 }
 
 func main() {
@@ -76,7 +78,17 @@ func main() {
 				return true
 			},
 		},
+		done: make(chan struct{}),
 	}
+
+	// Graceful shutdown handler
+	go func() {
+		<-sigChan
+		fmt.Println("Shutdown signal received, cleaning up...")
+		close(server.done)
+		server.wg.Wait()
+		os.Exit(0)
+	}()
 
 	// WebSocket endpoints
 	router.GET("/ws", server.handleWebSocket)
@@ -137,6 +149,13 @@ func (s *SnapdropServer) handleWebSocket(c *gin.Context) {
 		return
 	}
 
+	if ip := c.ClientIP(); ip == "" {
+		log.Println("Invalid client IP")
+		conn.Close()
+		return
+	}
+
+	s.wg.Add(1)
 	peer := &Peer{
 		ID:           generateUUID(),
 		IP:           c.ClientIP(),
@@ -170,43 +189,63 @@ func (s *SnapdropServer) onConnection(peer *Peer) {
 }
 
 func (s *SnapdropServer) handleMessages(peer *Peer) {
+	defer s.wg.Done()
+	defer s.leaveRoom(peer)
+
 	for {
-		messageType, message, err := peer.Socket.ReadMessage()
-		if err != nil {
-			s.leaveRoom(peer)
+		select {
+		case <-s.done:
 			return
-		}
-
-		if messageType != websocket.TextMessage {
-			continue
-		}
-
-		var msg map[string]interface{}
-		if err := json.Unmarshal(message, &msg); err != nil {
-			continue
-		}
-
-		msgType, ok := msg["type"].(string)
-		if !ok {
-			continue
-		}
-
-		switch msgType {
-		case "disconnect":
-			s.leaveRoom(peer)
-			return
-		case "pong":
-			peer.LastBeat = time.Now()
 		default:
-			// Handle relay messages
-			if to, ok := msg["to"].(string); ok && s.rooms[peer.IP] != nil {
-				if recipient, exists := s.rooms[peer.IP][to]; exists {
-					delete(msg, "to")
-					msg["sender"] = peer.ID
-					s.send(recipient, msg)
+			messageType, message, err := peer.Socket.ReadMessage()
+			if err != nil {
+				if !websocket.IsCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
+					log.Printf("Read error: %v", err)
 				}
+				return
+			}
+
+			if messageType != websocket.TextMessage {
+				continue
+			}
+
+			var msg map[string]interface{}
+			if err := json.Unmarshal(message, &msg); err != nil {
+				log.Printf("JSON parse error: %v", err)
+				continue
+			}
+
+			msgType, ok := msg["type"].(string)
+			if !ok {
+				continue
+			}
+
+			switch msgType {
+			case "disconnect":
+				return
+			case "pong":
+				peer.LastBeat = time.Now()
+			default:
+				s.handleRelayMessage(peer, msg)
 			}
 		}
+	}
+}
+
+func (s *SnapdropServer) handleRelayMessage(peer *Peer, msg map[string]interface{}) {
+	to, ok := msg["to"].(string)
+	if !ok {
+		return
+	}
+
+	s.mutex.RLock()
+	recipient, exists := s.rooms[peer.IP][to]
+	s.mutex.RUnlock()
+
+	if exists {
+		delete(msg, "to")
+		msg["sender"] = peer.ID
+		s.send(recipient, msg)
 	}
 }
 
@@ -266,7 +305,11 @@ func (s *SnapdropServer) send(peer *Peer, message interface{}) {
 	if peer == nil || peer.Socket == nil {
 		return
 	}
-	peer.Socket.WriteJSON(message)
+	
+	err := peer.Socket.WriteJSON(message)
+	if err != nil {
+		log.Printf("Send error: %v", err)
+	}
 }
 
 func (s *SnapdropServer) keepAlive(peer *Peer) {

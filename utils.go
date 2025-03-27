@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/mssola/user_agent"
 )
@@ -13,7 +14,12 @@ var animals = []string{"Dog", "Cat", "Elephant", "Lion", "Tiger", "Bear", "Pengu
 
 func generateUUID() string {
 	uuid := make([]byte, 16)
-	rand.Read(uuid)
+	_, err := rand.Read(uuid)
+	if err != nil {
+		// Fallback to timestamp-based ID if crypto/rand fails
+		return fmt.Sprintf("%x", time.Now().UnixNano())
+	}
+	
 	uuid[6] = (uuid[6] & 0x0f) | 0x40
 	uuid[8] = (uuid[8] & 0x3f) | 0x80
 	return fmt.Sprintf("%x-%x-%x-%x-%x", uuid[0:4], uuid[4:6], uuid[6:8], uuid[8:10], uuid[10:])
@@ -31,12 +37,15 @@ func generateDisplayName(seed string) string {
 func (p *Peer) setName(userAgentString string) {
 	ua := user_agent.New(userAgentString)
 	osInfo := ua.OS()
-	browserName, _ := ua.Browser()
+	browserName, _ := ua.Browser() // Ignore browser version
 
-	deviceName := strings.ReplaceAll(osInfo, "Mac OS", "Mac")
+	// Sanitize device name
+	deviceName := strings.TrimSpace(osInfo)
+	deviceName = strings.ReplaceAll(deviceName, "Mac OS", "Mac")
+	
 	if ua.Mobile() {
 		deviceName += " Mobile"
-	} else {
+	} else if browserName != "" {
 		deviceName += " " + browserName
 	}
 
@@ -44,11 +53,8 @@ func (p *Peer) setName(userAgentString string) {
 		deviceName = "Unknown Device"
 	}
 
-	// Set RTCSupported based on modern browsers
-	if browserName == "Chrome" || browserName == "Firefox" || browserName == "Safari" ||
-		strings.Contains(browserName, "Edge") {
-		p.RTCSupported = true
-	}
+	// Check for WebRTC support in modern browsers
+	p.RTCSupported = isWebRTCSupported(browserName)
 
 	p.Name = PeerName{
 		OS:          osInfo,
@@ -56,6 +62,17 @@ func (p *Peer) setName(userAgentString string) {
 		DeviceName:  deviceName,
 		DisplayName: generateDisplayName(p.ID),
 	}
+}
+
+func isWebRTCSupported(browserName string) bool {
+	supportedBrowsers := map[string]bool{
+		"Chrome":  true,
+		"Firefox": true,
+		"Safari":  true,
+		"Edge":    true,
+	}
+	
+	return supportedBrowsers[browserName] || strings.Contains(browserName, "Edge")
 }
 
 func hashString(s string) int64 {
