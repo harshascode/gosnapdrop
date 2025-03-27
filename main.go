@@ -29,12 +29,12 @@ type Peer struct {
 }
 
 type PeerName struct {
-	Model       string
-	OS          string
-	Browser     string
-	Type        string
-	DeviceName  string
-	DisplayName string
+	Model       string `json:"model"`
+	OS          string `json:"os"`
+	Browser     string `json:"browser"`
+	Type        string `json:"type"`
+	DeviceName  string `json:"deviceName"`
+	DisplayName string `json:"displayName"`
 }
 
 type SnapdropServer struct {

@@ -76,8 +76,15 @@ func abs(x int64) int64 {
 
 func (p *Peer) getInfo() map[string]interface{} {
 	return map[string]interface{}{
-		"id":           p.ID,
-		"name":         p.Name,
+		"id": p.ID,
+		"name": map[string]interface{}{
+			"model":       p.Name.Model,
+			"os":         p.Name.OS,
+			"browser":    p.Name.Browser,
+			"type":       p.Name.Type,
+			"deviceName": p.Name.DeviceName,
+			"displayName": p.Name.DisplayName,
+		},
 		"rtcSupported": p.RTCSupported,
 	}
 }
