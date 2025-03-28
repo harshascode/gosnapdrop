@@ -111,21 +111,29 @@ class Peer {
     }
 
     _dequeueFile() {
-        if (!this._filesQueue.length) return;
-        this._busy = true;
-        const file = this._filesQueue.shift();
-        this._sendFile(file);
+        if (!this._filesQueue.length) {
+            this._busy = false;
+            return;
+        }
+        // Wait a bit before sending next file
+        setTimeout(_ => {
+            const file = this._filesQueue.shift();
+            this._sendFile(file);
+        }, 1000);
     }
 
     _sendFile(file) {
         this._currentFile = file;
+        this._chunker = new FileChunker(file,
+            chunk => this._send(chunk),
+            offset => this._onPartitionEnd(offset));
+            
         this.sendJSON({
             type: 'header',
             name: file.name,
             mime: file.type,
             size: file.size
         });
-        // Wait for acceptance before sending chunks
     }
 
     _onPartitionEnd(offset) {
@@ -221,6 +229,10 @@ class Peer {
         this._filesQueue = [];
         this._busy = false;
         this._currentFile = null;
+        this._chunker = null;
+        this._pendingFileInfo = null;
+        this._digester = null;
+        this._lastProgress = 0;
     }
 
     _onChunkReceived(chunk) {
@@ -247,8 +259,7 @@ class Peer {
 
     _onTransferCompleted() {
         this._onDownloadProgress(1);
-        this._reader = null;
-        this._busy = false;
+        this._cancelTransfer();
         this._dequeueFile();
         Events.fire('notify-user', 'File transfer completed.');
     }
@@ -261,6 +272,11 @@ class Peer {
     _onTextReceived(message) {
         const escaped = decodeURIComponent(escape(atob(message.text)));
         Events.fire('text-received', { text: escaped, sender: this._peerId });
+    }
+
+    _sendNextChunk() {
+        if (!this._chunker) return;
+        this._chunker.nextPartition();
     }
 }
 

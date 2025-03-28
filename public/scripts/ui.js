@@ -143,6 +143,8 @@ class PeerUI {
     _onFilesSelected(e) {
         const $input = e.target;
         const files = $input.files;
+        if (files.length === 0) return;
+        
         Events.fire('files-selected', {
             files: files,
             to: this._peer.id
@@ -161,8 +163,9 @@ class PeerUI {
         }
         const degrees = `rotate(${360 * progress}deg)`;
         this.$progress.style.setProperty('--progress', degrees);
-        if (progress >= 1) {
-            this.setProgress(0);
+        if (progress >= 1 || progress === 0) {
+            this.$progress.style.setProperty('--progress', 'rotate(0deg)');
+            this.$progress.classList.remove('over50');
             this.$el.removeAttribute('transfer');
         }
     }
@@ -341,6 +344,7 @@ class ConfirmDialog extends Dialog {
         delete this._file;
         if (peerId && window.peers.peers[peerId]) {
             window.peers.peers[peerId].acceptFile();
+            this.hide();
         }
     }
 
@@ -349,6 +353,7 @@ class ConfirmDialog extends Dialog {
         delete this._file;
         if (peerId && window.peers.peers[peerId]) {
             window.peers.peers[peerId].rejectFile();
+            this.hide();
         }
     }
 }
