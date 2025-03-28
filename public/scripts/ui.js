@@ -565,6 +565,37 @@ class WebShareTargetUI {
     }
 }
 
+class ClearCacheButton {
+    constructor() {
+        const button = $('clearCache');
+        button.addEventListener('click', e => this._onClick(e));
+    }
+
+    async _onClick(e) {
+        e.preventDefault();
+        try {
+            // Clear application cache
+            if (window.caches) {
+                const cacheKeys = await caches.keys();
+                await Promise.all(cacheKeys.map(key => caches.delete(key)));
+            }
+            
+            // Clear service worker
+            if (navigator.serviceWorker) {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                await Promise.all(registrations.map(reg => reg.unregister()));
+            }
+            
+            // Reload the page
+            window.location.reload(true);
+            
+            Events.fire('notify-user', 'Cache cleared successfully');
+        } catch (err) {
+            console.error('Failed to clear cache:', err);
+            Events.fire('notify-user', 'Failed to clear cache');
+        }
+    }
+}
 
 class Snapdrop {
     constructor() {
@@ -580,6 +611,7 @@ class Snapdrop {
             const notifications = new Notifications();
             const networkStatusUI = new NetworkStatusUI();
             const webShareTargetUI = new WebShareTargetUI();
+            const clearCacheButton = new ClearCacheButton();
         });
     }
 }
