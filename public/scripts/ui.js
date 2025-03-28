@@ -262,11 +262,11 @@ class ReceiveDialog extends Dialog {
         $a.href = url;
         $a.download = file.name;
 
-        if(this._autoDownload()){
+        if (this._autoDownload()) {
             $a.click()
             return
         }
-        if(file.mime.split('/')[0] === 'image'){
+        if (file.mime.split('/')[0] === 'image') {
             console.log('the file is image');
             this.$el.querySelector('.preview').style.visibility = 'inherit';
             this.$el.querySelector("#img-preview").src = url;
@@ -304,11 +304,54 @@ class ReceiveDialog extends Dialog {
     }
 
 
-    _autoDownload(){
+    _autoDownload() {
         return !this.$el.querySelector('#autoDownload').checked
     }
 }
 
+class ConfirmDialog extends Dialog {
+    constructor() {
+        super('confirmDialog');
+        Events.on('file-confirm', e => this._onFileConfirm(e.detail));
+        this.$el.querySelector('#acceptTransfer').addEventListener('click', _ => this._accept());
+        this.$el.querySelector('#rejectTransfer').addEventListener('click', _ => this._reject());
+    }
+
+    _onFileConfirm(file) {
+        this._file = file;
+        this.$el.querySelector('#confirmFileName').textContent = file.name;
+        this.$el.querySelector('#confirmFileSize').textContent = this._formatFileSize(file.size);
+        this.show();
+    }
+
+    _formatFileSize(bytes) {
+        if (bytes >= 1e9) {
+            return (Math.round(bytes / 1e8) / 10) + ' GB';
+        } else if (bytes >= 1e6) {
+            return (Math.round(bytes / 1e5) / 10) + ' MB';
+        } else if (bytes > 1000) {
+            return Math.round(bytes / 1000) + ' KB';
+        } else {
+            return bytes + ' Bytes';
+        }
+    }
+
+    _accept() {
+        const peerId = this._file.sender;
+        delete this._file;
+        if (peerId && window.peers.peers[peerId]) {
+            window.peers.peers[peerId].acceptFile();
+        }
+    }
+
+    _reject() {
+        const peerId = this._file.sender;
+        delete this._file;
+        if (peerId && window.peers.peers[peerId]) {
+            window.peers.peers[peerId].rejectFile();
+        }
+    }
+}
 
 class SendTextDialog extends Dialog {
     constructor() {
@@ -508,7 +551,7 @@ class WebShareTargetUI {
         let shareTargetText = title ? title : '';
         shareTargetText += text ? shareTargetText ? ' ' + text : text : '';
 
-        if(url) shareTargetText = url; // We share only the Link - no text. Because link-only text becomes clickable.
+        if (url) shareTargetText = url; // We share only the Link - no text. Because link-only text becomes clickable.
 
         if (!shareTargetText) return;
         window.shareTargetText = shareTargetText;
@@ -521,10 +564,11 @@ class WebShareTargetUI {
 class Snapdrop {
     constructor() {
         const server = new ServerConnection();
-        const peers = new PeersManager(server);
+        window.peers = new PeersManager(server);
         const peersUI = new PeersUI();
         Events.on('load', e => {
             const receiveDialog = new ReceiveDialog();
+            const confirmDialog = new ConfirmDialog();
             const sendTextDialog = new SendTextDialog();
             const receiveTextDialog = new ReceiveTextDialog();
             const toast = new Toast();
@@ -609,13 +653,13 @@ Events.on('load', () => {
 
     function animate() {
         if (loading || step % dw < dw - 5) {
-            requestAnimationFrame(function() {
+            requestAnimationFrame(function () {
                 drawCircles();
                 animate();
             });
         }
     }
-    window.animateBackground = function(l) {
+    window.animateBackground = function (l) {
         loading = l;
         animate();
     };

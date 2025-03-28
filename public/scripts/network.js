@@ -118,16 +118,14 @@ class Peer {
     }
 
     _sendFile(file) {
+        this._currentFile = file;
         this.sendJSON({
             type: 'header',
             name: file.name,
             mime: file.type,
             size: file.size
         });
-        this._chunker = new FileChunker(file,
-            chunk => this._send(chunk),
-            offset => this._onPartitionEnd(offset));
-        this._chunker.nextPartition();
+        // Wait for acceptance before sending chunks
     }
 
     _onPartitionEnd(offset) {
@@ -149,6 +147,7 @@ class Peer {
 
     _onMessage(message) {
         if (typeof message !== 'string') {
+            if (!this._digester) return; // Ignore chunks if transfer not accepted
             this._onChunkReceived(message);
             return;
         }
@@ -173,21 +172,60 @@ class Peer {
             case 'text':
                 this._onTextReceived(message);
                 break;
+            case 'file-accepted':
+                this._sendNextChunk();
+                break;
+            case 'file-rejected':
+                this._cancelTransfer();
+                Events.fire('notify-user', 'File transfer rejected');
+                break;
         }
     }
 
     _onFileHeader(header) {
-        this._lastProgress = 0;
-        this._digester = new FileDigester({
+        // Ask for confirmation before proceeding
+        Events.fire('file-confirm', {
+            sender: this._peerId,
             name: header.name,
             mime: header.mime,
             size: header.size
+        });
+
+        this._lastProgress = 0;
+        this._pendingFileInfo = header; // Store header for later use
+    }
+
+    acceptFile() {
+        if (!this._pendingFileInfo) return;
+
+        this._digester = new FileDigester({
+            name: this._pendingFileInfo.name,
+            mime: this._pendingFileInfo.mime,
+            size: this._pendingFileInfo.size
         }, file => this._onFileReceived(file));
+
+        // Tell sender we're ready
+        this.sendJSON({ type: 'file-accepted' });
+        this._pendingFileInfo = null;
+    }
+
+    rejectFile() {
+        if (!this._pendingFileInfo) return;
+
+        // Tell sender we're rejecting the file
+        this.sendJSON({ type: 'file-rejected' });
+        this._pendingFileInfo = null;
+    }
+
+    _cancelTransfer() {
+        this._filesQueue = [];
+        this._busy = false;
+        this._currentFile = null;
     }
 
     _onChunkReceived(chunk) {
-        if(!chunk.byteLength) return;
-        
+        if (!chunk.byteLength) return;
+
         this._digester.unchunk(chunk);
         const progress = this._digester.progress;
         this._onDownloadProgress(progress);
@@ -254,7 +292,7 @@ class RTCPeer extends Peer {
     }
 
     _openChannel() {
-        const channel = this._conn.createDataChannel('data-channel', { 
+        const channel = this._conn.createDataChannel('data-channel', {
             ordered: true,
             reliable: true // Obsolete. See https://developer.mozilla.org/en-US/docs/Web/API/RTCDataChannel/reliable
         });
@@ -280,7 +318,7 @@ class RTCPeer extends Peer {
 
         if (message.sdp) {
             this._conn.setRemoteDescription(new RTCSessionDescription(message.sdp))
-                .then( _ => {
+                .then(_ => {
                     if (message.sdp.type === 'offer') {
                         return this._conn.createAnswer()
                             .then(d => this._onDescription(d));
