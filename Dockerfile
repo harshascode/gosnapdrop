@@ -7,7 +7,8 @@ WORKDIR /app
 COPY . .
 
 # Build with optimization flags
-RUN go build -o gosnapdrop
+# RUN go build -o gosnapdrop
+go build -ldflags="-w -s" -o gosnapdrop
 
 # Final stage
 FROM alpine:latest
